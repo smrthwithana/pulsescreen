@@ -1,0 +1,5 @@
+pygame>=2.5.2
+sounddevice>=0.4.6
+numpy>=1.26.0
+spotipy>=2.23.0
+python-dotenv>=1.0.0

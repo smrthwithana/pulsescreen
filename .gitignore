@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.env
+.spotipy-cache
+beatbridge_tracks.sqlite3
+.venv/
+venv/
+env/
+.idea/
+.vscode/
