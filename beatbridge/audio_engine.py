@@ -28,9 +28,16 @@ class AudioSnapshot:
 
 
 class AudioEngine:
-    def __init__(self, sample_rate: int = 44_100, block_size: int = 2048) -> None:
+    def __init__(
+        self,
+        sample_rate: int = 44_100,
+        block_size: int = 2048,
+        device: str | int | None = None,
+    ) -> None:
         self.sample_rate = sample_rate
         self.block_size = block_size
+        self.requested_device = device
+        self.current_device_index: int | None = None
         self.stream = None
         self.demo_mode = False
         self.status = "Microphone initializing"
@@ -56,19 +63,34 @@ class AudioEngine:
             self.status = "Demo audio: sounddevice is unavailable"
             return
 
-        try:
-            self.stream = sd.InputStream(
-                channels=1,
-                samplerate=self.sample_rate,
-                blocksize=self.block_size,
-                dtype="float32",
-                callback=self._audio_callback,
-            )
-            self.stream.start()
-            self.status = "Live microphone"
-        except Exception as exc:
-            self.demo_mode = True
-            self.status = f"Demo audio: microphone unavailable ({exc})"
+        errors: list[str] = []
+        for device_index in self._candidate_input_devices(include_requested=True):
+            try:
+                info = sd.query_devices(device_index, "input")
+                default_rate = int(float(info.get("default_samplerate") or self.sample_rate))
+                self.sample_rate = default_rate if default_rate > 0 else self.sample_rate
+                self.stream = sd.InputStream(
+                    device=device_index,
+                    channels=1,
+                    samplerate=self.sample_rate,
+                    blocksize=self.block_size,
+                    dtype="float32",
+                    callback=self._audio_callback,
+                )
+                self.stream.start()
+                name = self._clean_device_name(info.get("name", device_index))
+                self.status = f"Live microphone #{device_index}: {name}"
+                self.demo_mode = False
+                self.current_device_index = device_index
+                return
+            except Exception as exc:
+                errors.append(f"{device_index}: {exc}")
+                self.stream = None
+
+        self.demo_mode = True
+        self.current_device_index = None
+        detail = errors[-1] if errors else "no input devices found"
+        self.status = f"Demo audio: microphone unavailable ({detail})"
 
     def stop(self) -> None:
         if self.stream is None:
@@ -79,6 +101,37 @@ class AudioEngine:
         except Exception:
             pass
         self.stream = None
+
+    def cycle_input_device(self) -> str:
+        if sd is None:
+            self.demo_mode = True
+            self.status = "Demo audio: sounddevice is unavailable"
+            return self.status
+
+        try:
+            candidates = self._candidate_input_devices(include_requested=False)
+        except Exception as exc:
+            self.demo_mode = True
+            self.status = f"Demo audio: device scan failed ({exc})"
+            return self.status
+
+        if not candidates:
+            self.demo_mode = True
+            self.status = "Demo audio: no input devices found"
+            return self.status
+
+        if self.current_device_index in candidates:
+            position = candidates.index(self.current_device_index)
+            next_device = candidates[(position + 1) % len(candidates)]
+        else:
+            next_device = candidates[0]
+
+        self.stop()
+        self.requested_device = next_device
+        self.demo_mode = False
+        self.status = "Switching microphone"
+        self.start()
+        return self.status
 
     def update(self, dt: float) -> AudioSnapshot:
         if self.demo_mode:
@@ -138,6 +191,79 @@ class AudioEngine:
         mono = np.asarray(indata[:, 0], dtype=np.float32)
         with self._lock:
             self._latest_samples = mono
+
+    def _candidate_input_devices(self, include_requested: bool = True) -> list[int]:
+        devices = sd.query_devices()
+        hostapis = sd.query_hostapis()
+        indexes = [
+            index
+            for index, info in enumerate(devices)
+            if int(info.get("max_input_channels", 0)) > 0
+        ]
+
+        requested = self._match_requested_device(devices, indexes) if include_requested else None
+        preferred = sorted(
+            indexes,
+            key=lambda index: self._device_score(index, devices[index], hostapis),
+            reverse=True,
+        )
+
+        default_indexes: list[int] = []
+        for value in sd.default.device:
+            if isinstance(value, int) and value >= 0 and value in indexes:
+                default_indexes.append(value)
+
+        ordered: list[int] = []
+        for index in [requested, *preferred, *default_indexes, *indexes]:
+            if index is not None and index not in ordered:
+                ordered.append(index)
+        return ordered
+
+    def _match_requested_device(self, devices, indexes: list[int]) -> int | None:
+        if self.requested_device is None:
+            return None
+
+        request = str(self.requested_device).strip()
+        if not request:
+            return None
+        if request.isdigit():
+            index = int(request)
+            return index if index in indexes else None
+
+        lowered = request.lower()
+        for index in indexes:
+            if lowered in str(devices[index].get("name", "")).lower():
+                return index
+        return None
+
+    def _device_score(self, index: int, info, hostapis) -> int:
+        name = self._clean_device_name(info.get("name", "")).lower()
+        hostapi_name = ""
+        hostapi_index = info.get("hostapi")
+        if isinstance(hostapi_index, int) and 0 <= hostapi_index < len(hostapis):
+            hostapi_name = str(hostapis[hostapi_index].get("name", "")).lower()
+
+        score = 0
+        if "microphone" in name:
+            score += 80
+        if "mic" in name:
+            score += 35
+        if "array" in name:
+            score += 12
+        if "wasapi" in hostapi_name:
+            score += 18
+        elif "directsound" in hostapi_name:
+            score += 10
+        elif "mme" in hostapi_name:
+            score += 4
+        if "stereo mix" in name:
+            score -= 70
+        if "mapper" in name or "primary sound" in name:
+            score -= 30
+        return score
+
+    def _clean_device_name(self, name) -> str:
+        return " ".join(str(name).split())
 
     def _analyze_samples(self, samples: np.ndarray) -> tuple[float, float, float, float]:
         samples = np.nan_to_num(samples.astype(np.float32), copy=False)

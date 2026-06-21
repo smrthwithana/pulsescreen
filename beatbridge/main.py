@@ -12,21 +12,21 @@ from .spotify_client import SpotifyController, TrackInfo
 from .visualizers import VisualizerManager
 
 
-HINT_TEXT = "SPACE play/pause   N next   B previous   R refresh   Q queue match   1-3 modes   F fullscreen   ESC quit"
+HINT_TEXT = "SPACE play/pause   N next   B previous   R refresh   Q queue match   M mic   1-3 modes   F fullscreen   ESC quit"
 
 
 def main() -> None:
     config = load_config()
     pygame.init()
     pygame.font.init()
-    pygame.display.set_caption("BeatBridge")
+    pygame.display.set_caption(config.app_name)
 
     fullscreen = True
     screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
     clock = pygame.time.Clock()
     fonts = make_fonts()
 
-    audio = AudioEngine()
+    audio = AudioEngine(device=config.audio_device)
     audio.start()
 
     spotify = SpotifyController(config)
@@ -88,6 +88,8 @@ def main() -> None:
                                     spotify.add_to_queue(uri)[1]
                                 )
                             )
+                    elif event.key == pygame.K_m:
+                        set_toast(audio.cycle_input_device())
                 elif event.type == pygame.VIDEORESIZE and not fullscreen:
                     screen = pygame.display.set_mode(event.size, pygame.RESIZABLE)
                     visualizers.resize(screen.get_size())
@@ -108,6 +110,7 @@ def main() -> None:
                 fonts=fonts,
                 snapshot=snapshot,
                 mode_name=visualizers.current_name,
+                app_name=config.app_name,
                 track=spotify.current_track,
                 spotify_status=spotify.status_text,
                 recommendations=recommendations,
@@ -138,13 +141,14 @@ def draw_overlay(
     fonts: dict[str, pygame.font.Font],
     snapshot: AudioSnapshot,
     mode_name: str,
+    app_name: str,
     track: TrackInfo,
     spotify_status: str,
     recommendations: list[RecommendedTrack],
     toast_text: str,
 ) -> None:
     width, height = screen.get_size()
-    draw_top_left(screen, fonts, snapshot, mode_name)
+    draw_top_left(screen, fonts, snapshot, mode_name, app_name)
     draw_bottom_track(screen, fonts, track, spotify_status)
     draw_center_hint(screen, fonts, HINT_TEXT)
     draw_recommendations(screen, fonts, recommendations)
@@ -157,10 +161,11 @@ def draw_top_left(
     fonts: dict[str, pygame.font.Font],
     snapshot: AudioSnapshot,
     mode_name: str,
+    app_name: str,
 ) -> None:
-    panel = pygame.Surface((360, 92), pygame.SRCALPHA)
+    panel = pygame.Surface((440, 114), pygame.SRCALPHA)
     pygame.draw.rect(panel, (0, 0, 0, 92), panel.get_rect(), border_radius=8)
-    draw_text(panel, fonts["brand"], "BeatBridge", (16, 12), (240, 255, 255))
+    draw_text(panel, fonts["brand"], app_name, (16, 12), (240, 255, 255))
     source = "DEMO" if snapshot.demo_mode else "LIVE"
     bpm_text = f"{snapshot.bpm:05.1f} BPM" if snapshot.bpm > 0 else "BPM scanning"
     draw_text(
@@ -172,6 +177,8 @@ def draw_top_left(
     )
     levels = f"B {snapshot.bass:.2f}   M {snapshot.mids:.2f}   T {snapshot.treble:.2f}"
     draw_text(panel, fonts["tiny"], levels, (17, 70), (135, 190, 210))
+    status = ellipsize(fonts["tiny"], snapshot.status, 405)
+    draw_text(panel, fonts["tiny"], status, (17, 91), (145, 180, 200))
     screen.blit(panel, (18, 18))
 
 

@@ -19,11 +19,13 @@ SPOTIFY_SCOPES = (
 
 @dataclass(frozen=True)
 class AppConfig:
+    app_name: str
     spotify_client_id: str | None
     spotify_client_secret: str | None
     spotify_redirect_uri: str
     spotify_cache_path: str
     database_path: Path
+    audio_device: str | None
 
     @property
     def spotify_configured(self) -> bool:
@@ -40,6 +42,7 @@ def load_config() -> AppConfig:
 
     root = Path.cwd()
     return AppConfig(
+        app_name=os.getenv("PLUSESCREEN_APP_NAME", "plusescreen"),
         spotify_client_id=os.getenv("SPOTIPY_CLIENT_ID") or None,
         spotify_client_secret=os.getenv("SPOTIPY_CLIENT_SECRET") or None,
         spotify_redirect_uri=os.getenv(
@@ -48,5 +51,11 @@ def load_config() -> AppConfig:
         spotify_cache_path=os.getenv(
             "SPOTIPY_CACHE_PATH", str(root / ".spotipy-cache")
         ),
-        database_path=root / "beatbridge_tracks.sqlite3",
+        database_path=root / "plusescreen_tracks.sqlite3",
+        audio_device=(
+            os.getenv("PLUSESCREEN_AUDIO_DEVICE")
+            or os.getenv("PULSESCREEN_AUDIO_DEVICE")
+            or os.getenv("BEATBRIDGE_AUDIO_DEVICE")
+            or None
+        ),
     )

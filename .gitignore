@@ -3,6 +3,7 @@ __pycache__/
 .env
 .spotipy-cache
 beatbridge_tracks.sqlite3
+plusescreen_tracks.sqlite3
 .venv/
 venv/
 env/
