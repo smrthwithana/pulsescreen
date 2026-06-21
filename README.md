@@ -53,6 +53,12 @@ Playback controls require a Spotify Premium account and an active playback devic
 python main.py
 ```
 
+On Windows, you can also double-click:
+
+```text
+Launch plusescreen.bat
+```
+
 The first Spotify login may open a browser. If credentials are missing or login fails, the visualizer and recommendations still run.
 
 ## Keyboard Controls
