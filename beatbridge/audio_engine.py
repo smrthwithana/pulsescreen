@@ -40,6 +40,7 @@ class AudioEngine:
         self.current_device_index: int | None = None
         self.stream = None
         self.demo_mode = False
+        self.force_demo = False
         self.status = "Microphone initializing"
 
         self._lock = threading.Lock()
@@ -56,8 +57,14 @@ class AudioEngine:
         self._bpm = 0.0
         self._noise_floor = 0.04
         self._previous_raw_volume = 0.0
+        self._silent_seconds = 0.0
 
     def start(self) -> None:
+        if self.force_demo:
+            self.demo_mode = True
+            self.status = "Demo audio: visualizer mode"
+            return
+
         if sd is None:
             self.demo_mode = True
             self.status = "Demo audio: sounddevice is unavailable"
@@ -82,6 +89,7 @@ class AudioEngine:
                 self.status = f"Live microphone #{device_index}: {name}"
                 self.demo_mode = False
                 self.current_device_index = device_index
+                self._silent_seconds = 0.0
                 return
             except Exception as exc:
                 errors.append(f"{device_index}: {exc}")
@@ -101,6 +109,20 @@ class AudioEngine:
         except Exception:
             pass
         self.stream = None
+
+    def toggle_demo_mode(self) -> str:
+        if self.force_demo or self.demo_mode:
+            self.force_demo = False
+            self.demo_mode = False
+            self.status = "Switching to live audio"
+            self.start()
+            return self.status
+
+        self.stop()
+        self.force_demo = True
+        self.demo_mode = True
+        self.status = "Demo audio: visualizer mode"
+        return self.status
 
     def cycle_input_device(self) -> str:
         if sd is None:
@@ -127,6 +149,7 @@ class AudioEngine:
             next_device = candidates[0]
 
         self.stop()
+        self.force_demo = False
         self.requested_device = next_device
         self.demo_mode = False
         self.status = "Switching microphone"
@@ -134,7 +157,7 @@ class AudioEngine:
         return self.status
 
     def update(self, dt: float) -> AudioSnapshot:
-        if self.demo_mode:
+        if self.force_demo or self.demo_mode:
             return self._update_demo()
 
         with self._lock:
@@ -142,6 +165,9 @@ class AudioEngine:
             self._latest_samples = None
 
         if samples is None or samples.size == 0:
+            self._silent_seconds += dt
+            if self._silent_seconds > 5.0:
+                return self._switch_to_auto_demo("Demo audio: no live input signal")
             self._volume *= 0.94
             self._bass *= 0.94
             self._mids *= 0.94
@@ -159,6 +185,13 @@ class AudioEngine:
             )
 
         raw_volume, raw_bass, raw_mids, raw_treble = self._analyze_samples(samples)
+        if raw_volume < 0.006:
+            self._silent_seconds += dt
+            if self._silent_seconds > 5.0:
+                return self._switch_to_auto_demo("Demo audio: microphone is silent")
+        else:
+            self._silent_seconds = 0.0
+
         beat = self._detect_beat(raw_volume)
 
         smooth = 1.0 - math.exp(-max(dt, 1 / 120) * 9.0)
@@ -184,6 +217,14 @@ class AudioEngine:
             demo_mode=False,
             status=self.status,
         )
+
+    def _switch_to_auto_demo(self, status: str) -> AudioSnapshot:
+        self.stop()
+        self.demo_mode = True
+        self.force_demo = False
+        self.current_device_index = None
+        self.status = f"{status} (press M to try inputs)"
+        return self._update_demo()
 
     def _audio_callback(self, indata, frames, time_info, status) -> None:
         if status:

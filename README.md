@@ -70,6 +70,7 @@ The first Spotify login may open a browser. If credentials are missing or login 
 | `R` | Refresh current song |
 | `Q` | Queue the best recommendation if it has a valid Spotify track URI |
 | `M` | Cycle microphone/input device |
+| `D` | Toggle demo visualizer mode |
 
 ## Recommendations
 
@@ -106,7 +107,7 @@ To list devices:
 .\.venv\Scripts\python.exe -m sounddevice
 ```
 
-If the overlay says `Live microphone` but the visualizer is not reacting, press `M` to cycle through the available input devices. Some Windows machines expose `Stereo Mix`, virtual voice changers, Bluetooth headset inputs, and the laptop microphone separately.
+If the overlay says `Live microphone` but the visualizer is not reacting, press `M` to cycle through the available input devices. Some Windows machines expose `Stereo Mix`, virtual voice changers, Bluetooth headset inputs, and the laptop microphone separately. Press `D` to force demo visualizer mode any time.
 
 The visualizer should still animate in demo mode.
 

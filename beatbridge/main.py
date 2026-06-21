@@ -12,7 +12,7 @@ from .spotify_client import SpotifyController, TrackInfo
 from .visualizers import VisualizerManager
 
 
-HINT_TEXT = "SPACE play/pause   N next   B previous   R refresh   Q queue match   M mic   1-3 modes   F fullscreen   ESC quit"
+HINT_TEXT = "SPACE play/pause   N next   B previous   R refresh   Q queue match   M mic   D demo   1-3 modes   F fullscreen   ESC quit"
 
 
 def main() -> None:
@@ -90,6 +90,8 @@ def main() -> None:
                             )
                     elif event.key == pygame.K_m:
                         set_toast(audio.cycle_input_device())
+                    elif event.key == pygame.K_d:
+                        set_toast(audio.toggle_demo_mode())
                 elif event.type == pygame.VIDEORESIZE and not fullscreen:
                     screen = pygame.display.set_mode(event.size, pygame.RESIZABLE)
                     visualizers.resize(screen.get_size())
